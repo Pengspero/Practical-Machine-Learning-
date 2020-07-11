@@ -1,0 +1,241 @@
+---
+title: "Practical Machine Learning Report_Course Project"
+author: "Pengfei LI"
+date: "7/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Practical Machine Learning: Prediction Assignment Writeup**
+
+# **Introduction**
+
+This report provides the data analysis for the Assignment Project in the _Course Practical Machine Learning_. With the help of R package knitr, this report will present the output of the analysis in the html format on both Github and RPubs.com.
+
+The aim of this report si to build up an analytical approach for the data analysis process of the course project. It involves the prediction on the performance of 6 participants in some certain exercises. The following section will provide the algorithm of the machine learning process and submit the prediction for the Quiz in the Project Instruction. 
+
+
+# **Project Description**
+
+To collect a large amount of data about personal activity inexpensively is possible now with devices such as Jawbone Up, Nike FuelBand, and Fitbit. A group of enthusiasts use these devices to take measurements about themselves, regularly to improve their health, or to find patterns in their behavior. 
+
+One of the central issues that people regularly ask is about how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In the following sections, my goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The collected data from this activity will be used for data analysis to answer the mentioned issues.
+
+More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Also there are some more introductions in the following websites:
+http://groupware.les.inf.puc-rio.br/har
+
+
+# **Project Analysis**
+
+## **Dataset Introduction**
+
+The data analyzed here is provided in the project instruction, from the following links:
+1. training data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+2. test data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. 
+
+The data from this site will be used in the following analysis to construct the model. The main collaborators of this website is 
+
+- Wallace Ugulino (wugulino at inf dot puc-rio dot br)
+- Eduardo Velloso
+- Hugo Fuks 
+
+And the introduction of the data source is from:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+## **Exploratory Analysis**
+
+In this sub-section, I will start with some data pre-processing procedure and the exploratory analysis for the dataset.
+
+### **Data Pre-processing**
+
+Starting with downloading the data, the solution procedure is as follows.
+
+```{r,echo=TRUE}
+#Download the file from link in the instruction
+data1 <- "training.csv"
+data2 <- "testing.csv"
+
+if(!file.exists(data1)){
+        fileUrl<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+        download.file(fileUrl,data1,method = "curl")
+}
+
+if(!file.exists(data2)){
+        fileUrl<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+        download.file(fileUrl,data2,method = "curl")
+}
+
+# Load the data
+train_data <- read.csv(data1, strip.white = TRUE, na.strings = c("NA",""))
+test_data <- read.csv(data2, strip.white = TRUE, na.strings = c("NA",""))
+```
+
+Then, I check the data and do the primary data processing.
+
+```{r,echo=TRUE}
+# Check the data
+dim(train_data)
+str(train_data)
+
+dim(test_data)
+str(test_data)
+
+# Data pre-processing
+library(rattle)
+library(randomForest)
+library(caret)
+library(rpart)
+
+# Separate the dataset
+training_partition <- createDataPartition(train_data$classe,p=0.75,list = FALSE)
+train_subset <- train_data[training_partition,]
+test_subset <- train_data[-training_partition,]
+
+# pre-process the subset
+low_var <- nearZeroVar(train_subset)
+train_subset <- train_subset[,-low_var]
+test_subset <- test_subset[,-low_var]
+
+var_na <- sapply(train_subset,function(x){
+                                mean(is.na(x))>0.95})
+train_subset <- train_subset[,var_na==FALSE]
+test_subset <- test_subset[,var_na==FALSE]
+
+train_subset <- train_subset[ , -(1:5)]
+test_subset  <- test_subset [ , -(1:5)]
+
+dim(train_subset)
+dim(test_subset)
+```
+
+The upper code creates two partitions from the training dataset. Then I start to cleanse these two subsets.
+
+```{r,echo=TRUE}
+# Data pre-processing
+library(rattle)
+library(randomForest)
+library(caret)
+library(rpart)
+
+# Separate the dataset
+training_partition <- createDataPartition(train_data$classe,p=0.75,list = FALSE)
+train_subset <- train_data[training_partition,]
+test_subset <- train_data[-training_partition,]
+
+# pre-process the subset
+low_var <- nearZeroVar(train_subset)
+train_subset <- train_subset[,-low_var]
+test_subset <- test_subset[,-low_var]
+
+var_na <- sapply(train_subset,function(x){
+                                mean(is.na(x))>0.95})
+train_subset <- train_subset[,var_na==FALSE]
+test_subset <- test_subset[,var_na==FALSE]
+
+train_subset <- train_subset[ , -(1:5)]
+test_subset  <- test_subset [ , -(1:5)]
+
+dim(train_subset)
+dim(test_subset)
+```
+
+### **Exploring Correlation**
+
+Here I go on with the correlation analysis between the variables before the model construction.
+
+```{r,echo=TRUE}
+# Apply the correlation analysis for the dataset
+library(corrplot)
+library(lattice)
+library(ggplot2)
+library(rpart.plot)
+
+correlation <- cor(train_subset[,-54])
+corrplot(correlation, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+In the upper correlation analysis, all the involved variables are shown in the correlation plot. The blue colour represents the positive correlation efficients, while the red colour represents the negative efficients. 
+
+### **Prediction Model Construction**
+
+In this section, I apply three different approaches (Decision Tree Model, Generalized Boosted Model and Random Forest Model) for the modelling process on the training dataset. The one with higehr accuracy efficient will be used for the quiz section in the end of the project.
+
+```{r,echo=TRUE}
+# Plot the decision tree
+set.seed(1000)
+decision_tree <- rpart(classe~.,data=train_subset,method="class")
+fancyRpartPlot(decision_tree)
+
+# Predictions from the decision tree model
+prediction_decision_tree <- predict(decision_tree,newdata = test_subset,
+                                    type = "class")
+conf_decision_tree <- confusionMatrix(prediction_decision_tree,as.factor(test_subset$classe))
+conf_decision_tree
+
+plot(conf_decision_tree$table, col = conf_decision_tree$byClass, 
+     main = paste("Decision Tree Model: Predictive Accuracy =",
+                  round(conf_decision_tree$overall['Accuracy'], 4)))
+```
+
+Then the generalized boost model is as follows.
+
+```{r,echo=TRUE}
+# Generalized Boosted Model
+set.seed(1000)
+control_GBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+fit_GBM  <- train(classe ~ ., data = train_subset, method = "gbm",
+                  trControl = control_GBM, verbose = FALSE)
+fit_GBM$finalModel
+
+predict_GBM <- predict(fit_GBM, newdata=test_subset)
+conf_GBM <- confusionMatrix(predict_GBM, as.factor(test_subset$classe))
+conf_GBM
+plot(conf_GBM$table, col = conf_GBM$byClass, 
+     main = paste("GBM - Accuracy =", round(conf_GBM$overall['Accuracy'], 4)))
+```
+
+The random forest model comes in the following section.
+
+```{r,echo=TRUE}
+# Random forest model
+set.seed(1000)
+control_RFM <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+fit_RFM  <- train(classe ~ ., data = train_subset, method = "rf",
+                 trControl = control_RFM, verbose = FALSE)
+fit_RFM$finalModel
+
+predict_RFM <- predict(fit_RFM, newdata = test_subset)
+conf_RFM <- confusionMatrix(predict_RFM, as.factor(test_subset$classe))
+conf_RFM
+plot(conf_RFM$table, col = conf_RFM$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(conf_RFM$overall['Accuracy'], 4)))
+```
+
+### **Apply the selected data on the test.data**
+
+The upper analysis indicates the accuracy of three different model.
+
+1. Decision Tree Model: 0.7471 
+2. Generalized Boosted Model: 0.9861  
+3. Random Forest Model: 0.9978   
+
+Here the random forest model is selected to be the model for test data.
+
+```{r,echo=TRUE}
+predict_test <- predict(fit_RFM, newdata=test_data)
+predict_test
+```
+
+
